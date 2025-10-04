@@ -1,12 +1,23 @@
 import { apiCall } from './api';
 import type { ApiResponse } from './api';
-import type { LoginRequest, RegisterRequest, LoginResponse, User } from '../types/auth';
+import type { 
+  LoginRequest, 
+  RegisterRequest, 
+  LoginResponse, 
+  User, 
+  RefreshTokenRequest,
+  RefreshTokenResponse,
+  ChangePasswordRequest,
+  UpdateProfileRequest,
+  ResetPasswordRequest,
+  UserSession
+} from '../types/auth';
 
-// Auth service functions that match your backend endpoints
+// Auth service functions that match the new API documentation
 export const authService = {
   // Register a new user
-  register: async (userData: RegisterRequest): Promise<ApiResponse<LoginResponse>> => {
-    return apiCall<LoginResponse>('POST', '/auth/register', userData);
+  register: async (userData: RegisterRequest): Promise<ApiResponse<{ message: string; user: User }>> => {
+    return apiCall<{ message: string; user: User }>('POST', '/auth/register', userData);
   },
 
   // Login user
@@ -14,73 +25,131 @@ export const authService = {
     return apiCall<LoginResponse>('POST', '/auth/login', credentials);
   },
 
-  // Get user profile (protected route)
-  getProfile: async (): Promise<ApiResponse<User>> => {
-    return apiCall<User>('GET', '/auth/profile');
+  // Refresh access token
+  refreshToken: async (refreshTokenData: RefreshTokenRequest): Promise<ApiResponse<RefreshTokenResponse>> => {
+    return apiCall<RefreshTokenResponse>('POST', '/auth/refresh', refreshTokenData);
   },
 
   // Logout user (protected route)
-  logout: async (): Promise<ApiResponse<{ message: string }>> => {
-    return apiCall<{ message: string }>('POST', '/auth/logout');
+  logout: async (allDevices = false): Promise<ApiResponse<{ message: string }>> => {
+    return apiCall<{ message: string }>('POST', '/auth/logout', { all_devices: allDevices });
   },
 
-  // Refresh token (not implemented in backend yet)
-  refreshToken: async (): Promise<ApiResponse<LoginResponse>> => {
-    return apiCall<LoginResponse>('POST', '/auth/refresh');
+  // Get current user profile (protected route) - endpoint is /auth/me
+  getCurrentUser: async (): Promise<ApiResponse<User>> => {
+    return apiCall<User>('GET', '/auth/me');
   },
 
-  // Forgot password (not implemented in backend yet)
+  // Update user profile (protected route)
+  updateProfile: async (profileData: UpdateProfileRequest): Promise<ApiResponse<{ message: string; user: User }>> => {
+    return apiCall<{ message: string; user: User }>('PUT', '/auth/me', profileData);
+  },
+
+  // Change password (protected route)
+  changePassword: async (passwordData: ChangePasswordRequest): Promise<ApiResponse<{ message: string }>> => {
+    return apiCall<{ message: string }>('POST', '/auth/change-password', passwordData);
+  },
+
+  // Forgot password
   forgotPassword: async (email: string): Promise<ApiResponse<{ message: string }>> => {
     return apiCall<{ message: string }>('POST', '/auth/forgot-password', { email });
   },
 
-  // Reset password (not implemented in backend yet)
-  resetPassword: async (token: string, password: string): Promise<ApiResponse<{ message: string }>> => {
-    return apiCall<{ message: string }>('POST', '/auth/reset-password', {
-      token,
-      new_password: password,
-      confirm_password: password,
-    });
+  // Reset password
+  resetPassword: async (resetData: ResetPasswordRequest): Promise<ApiResponse<{ message: string }>> => {
+    return apiCall<{ message: string }>('POST', '/auth/reset-password', resetData);
   },
 
-  // Change password (protected route, not implemented in backend yet)
-  changePassword: async (currentPassword: string, newPassword: string): Promise<ApiResponse<{ message: string }>> => {
-    return apiCall<{ message: string }>('POST', '/auth/change-password', {
-      current_password: currentPassword,
-      new_password: newPassword,
-    });
-  },
-
-  // Verify email (not implemented in backend yet)
+  // Verify email
   verifyEmail: async (token: string): Promise<ApiResponse<{ message: string }>> => {
     return apiCall<{ message: string }>('POST', '/auth/verify-email', { token });
   },
 
-  // Health check
+  // Resend verification email (protected route)
+  resendVerification: async (): Promise<ApiResponse<{ message: string }>> => {
+    return apiCall<{ message: string }>('POST', '/auth/resend-verification');
+  },
+
+  // Get user sessions (protected route)
+  getSessions: async (): Promise<ApiResponse<{ sessions: UserSession[] }>> => {
+    return apiCall<{ sessions: UserSession[] }>('GET', '/auth/sessions');
+  },
+
+  // Revoke a specific session (protected route)
+  revokeSession: async (sessionId: number): Promise<ApiResponse<{ message: string }>> => {
+    return apiCall<{ message: string }>('DELETE', `/auth/sessions/${sessionId}`);
+  },
+
+  // Health check - keeping for backward compatibility
   healthCheck: async (): Promise<ApiResponse<any>> => {
     return apiCall('GET', '/auth/health');
   },
+
+  // Legacy method name - kept for backward compatibility
+  getProfile: async (): Promise<ApiResponse<User>> => {
+    return authService.getCurrentUser();
+  },
 };
 
-// Helper functions for token management
+// Enhanced token manager with refresh token support
 export const tokenManager = {
-  // Store token in localStorage
-  setToken: (token: string): void => {
+  // Store access token
+  setAccessToken: (token: string): void => {
     localStorage.setItem(import.meta.env.VITE_AUTH_TOKEN_KEY || 'wiplash_auth_token', token);
   },
 
-  // Get token from localStorage
-  getToken: (): string | null => {
+  // Store refresh token
+  setRefreshToken: (token: string): void => {
+    localStorage.setItem(import.meta.env.VITE_REFRESH_TOKEN_KEY || 'wiplash_refresh_token', token);
+  },
+
+  // Store both tokens (convenience method)
+  setTokens: (accessToken: string, refreshToken: string): void => {
+    tokenManager.setAccessToken(accessToken);
+    tokenManager.setRefreshToken(refreshToken);
+  },
+
+  // Get access token
+  getAccessToken: (): string | null => {
     return localStorage.getItem(import.meta.env.VITE_AUTH_TOKEN_KEY || 'wiplash_auth_token');
   },
 
-  // Remove token from localStorage
-  removeToken: (): void => {
+  // Get refresh token
+  getRefreshToken: (): string | null => {
+    return localStorage.getItem(import.meta.env.VITE_REFRESH_TOKEN_KEY || 'wiplash_refresh_token');
+  },
+
+  // Remove access token
+  removeAccessToken: (): void => {
     localStorage.removeItem(import.meta.env.VITE_AUTH_TOKEN_KEY || 'wiplash_auth_token');
+  },
+
+  // Remove refresh token
+  removeRefreshToken: (): void => {
+    localStorage.removeItem(import.meta.env.VITE_REFRESH_TOKEN_KEY || 'wiplash_refresh_token');
+  },
+
+  // Remove all tokens
+  removeAllTokens: (): void => {
+    tokenManager.removeAccessToken();
+    tokenManager.removeRefreshToken();
   },
 
   // Check if user is authenticated
   isAuthenticated: (): boolean => {
-    return !!tokenManager.getToken();
+    return !!tokenManager.getAccessToken();
+  },
+
+  // Legacy methods for backward compatibility
+  setToken: (token: string): void => {
+    tokenManager.setAccessToken(token);
+  },
+
+  getToken: (): string | null => {
+    return tokenManager.getAccessToken();
+  },
+
+  removeToken: (): void => {
+    tokenManager.removeAccessToken();
   },
 };

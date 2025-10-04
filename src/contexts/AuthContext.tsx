@@ -35,13 +35,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Initialize auth state on mount
   useEffect(() => {
     const initializeAuth = async () => {
-      const token = tokenManager.getToken();
+      const token = tokenManager.getAccessToken();
       if (token) {
         try {
           await refreshUser();
         } catch (error) {
           console.error('Failed to refresh user:', error);
-          tokenManager.removeToken();
+          tokenManager.removeAllTokens();
         }
       }
       setIsLoading(false);
@@ -56,7 +56,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await authService.login(credentials);
       
       if (response.success && response.data) {
-        tokenManager.setToken(response.data.access_token);
+        tokenManager.setTokens(response.data.access_token, response.data.refresh_token);
         setUser(response.data.user);
         setIsAuthenticated(true);
         return { success: true };
@@ -82,9 +82,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await authService.register(userData);
       
       if (response.success && response.data) {
-        tokenManager.setToken(response.data.access_token);
-        setUser(response.data.user);
-        setIsAuthenticated(true);
+        // Note: Registration returns user info but might not auto-login
+        // Check if the response includes tokens (auto-login) or just user info
+        if ('access_token' in response.data) {
+          // Auto-login after registration
+          const loginData = response.data as any;
+          tokenManager.setTokens(loginData.access_token, loginData.refresh_token);
+          setUser(loginData.user);
+          setIsAuthenticated(true);
+        } else {
+          // Registration successful but no auto-login
+          // User needs to verify email or login separately
+        }
         return { success: true };
       } else {
         return { 
@@ -110,7 +119,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Logout API call failed:', error);
       // Continue with local logout even if API call fails
     } finally {
-      tokenManager.removeToken();
+      tokenManager.removeAllTokens();
       setUser(null);
       setIsAuthenticated(false);
     }
@@ -118,7 +127,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refreshUser = async (): Promise<void> => {
     try {
-      const response = await authService.getProfile();
+      const response = await authService.getCurrentUser();
       if (response.success && response.data) {
         setUser(response.data);
         setIsAuthenticated(true);
@@ -126,7 +135,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('Failed to get user profile');
       }
     } catch (error) {
-      tokenManager.removeToken();
+      tokenManager.removeAllTokens();
       setUser(null);
       setIsAuthenticated(false);
       throw error;
